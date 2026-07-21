@@ -1,0 +1,85 @@
+:root {
+  /* Surfaces — near-black, matching F1's own broadcast/digital livery rather than a blue-graphite dashboard */
+  --bg-void: #15151e;
+  --bg-panel: #1e1e27;
+  --bg-panel-raised: #26262f;
+  --bg-panel-inset: #101014;
+  --line: #33333f;
+  --line-bright: #4a4a58;
+
+  /* Text */
+  --text-primary: #ffffff;
+  --text-muted: #9a9aa5;
+  --text-faint: #63636f;
+
+  /* Brand — official F1 red, used for primary actions, selection state, and identity marks */
+  --f1-red: #e10600;
+  --f1-red-dim: #a80500;
+
+  /* Signal colors — semantic, not decorative, so they never collide with the brand mark */
+  --accent-warning: #ffd400;
+  --accent-positive: #17c964;
+  --accent-negative: #e10600;
+
+  /* Real FIA tire compound markings — grounding the palette in the subject itself */
+  --tire-soft: #e8453c;
+  --tire-medium: #f4c430;
+  --tire-hard: #f2f2f2;
+  --tire-inter: #3dba5a;
+  --tire-wet: #2e86de;
+
+  /* Type */
+  --font-display: 'Titillium Web', 'Rajdhani', 'Arial Narrow', sans-serif;
+  --font-data: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+  --font-body: 'Inter', system-ui, sans-serif;
+
+  /* Layout */
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg-void);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  background-image:
+    radial-gradient(ellipse 1200px 600px at 50% -10%, rgba(225, 6, 0, 0.08), transparent),
+    repeating-linear-gradient(180deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
+}
+
+::selection {
+  background: var(--f1-red);
+  color: #ffffff;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--f1-red);
+  outline-offset: 2px;
+}
+
+.mono-num {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/types.ts","./src/api/client.ts","./src/components/deltachart.tsx","./src/components/stinttimeline.tsx","./src/components/strategybuilder.tsx","./src/components/undercutpanel.tsx","./src/pages/raceselectpage.tsx","./src/pages/raceworkbenchpage.tsx"],"version":"5.9.3"}

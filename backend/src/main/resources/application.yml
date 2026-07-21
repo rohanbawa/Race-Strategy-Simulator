@@ -1,0 +1,35 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: race-strategy-simulator
+  datasource:
+    url: jdbc:h2:file:./data/racesim;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+racesim:
+  cors:
+    allowed-origins: http://localhost:5173
+  data-sources:
+    # Jolpica is the community-run successor to the retired Ergast API - same schema, same endpoints.
+    jolpica-base-url: https://api.jolpi.ca/ergast/f1
+    # OpenF1 provides lap-by-lap and stint/pit-stop telemetry that Jolpica does not (2018+ seasons).
+    openf1-base-url: https://api.openf1.org/v1
+
+logging:
+  level:
+    com.racesim: INFO
