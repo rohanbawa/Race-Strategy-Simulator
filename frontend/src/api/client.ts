@@ -10,6 +10,7 @@ import type {
   SeasonRace,
   SimulationRequest,
   SimulationResult,
+  TracksResponse,
   UndercutRequest,
   UndercutResult,
   Weather,
@@ -60,10 +61,12 @@ export const api = {
 
   getGridInfo: () => requestTo<GridInfoResponse>(ML, '/grid'),
 
-  generateQualifying: (weather: Weather, seed?: number) =>
+  getTracks: () => requestTo<TracksResponse>(ML, '/tracks'),
+
+  generateQualifying: (weather: Weather, trackRound?: number, seed?: number) =>
     requestTo<QualifyingResponse>(ML, '/qualifying', {
       method: 'POST',
-      body: JSON.stringify({ weather, seed }),
+      body: JSON.stringify({ weather, trackRound, seed }),
     }),
 
   predictRaceWinner: (body: PredictRequest) =>

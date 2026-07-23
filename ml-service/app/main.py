@@ -8,11 +8,14 @@ trained lazily on the first request that needs it (see `model.load_or_train`).
 
 from __future__ import annotations
 
+from typing import Optional
+
 import numpy as np
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import model as ml
+from .calendar_2026 import CALENDAR_2026, Track, is_played, next_upcoming_round, track_for
 from .grid_2026 import REGULATIONS_2026, entrants
 from .schemas import (
     WETNESS,
@@ -24,6 +27,8 @@ from .schemas import (
     QualifyingResponse,
     ScenarioEcho,
     ScenarioRequest,
+    TrackDto,
+    TracksResponse,
     Weather,
 )
 from .simulator import Conditions, monte_carlo, ratings, simulate_qualifying
@@ -47,8 +52,33 @@ def _entrant_lookup():
     return {e.id: e for e in entrants()}
 
 
+def _track_dto(track: Track) -> TrackDto:
+    return TrackDto(
+        round=track.round,
+        name=track.name,
+        country=track.country,
+        circuit=track.circuit,
+        date=track.date,
+        laps=track.laps,
+        kind=track.kind,
+        overtakingEase=track.overtaking_ease,
+        tyreStress=track.tyre_stress,
+        safetyCarRate=track.safety_car_rate,
+        played=is_played(track),
+    )
+
+
+def _track_seed(round_: Optional[int], explicit: Optional[int]) -> int:
+    """A deterministic per-track qualifying seed, so each circuit gets its own grid."""
+    if explicit is not None:
+        return explicit
+    if round_ is not None:
+        return 3000 + round_
+    return 2026
+
+
 def _grid_from_request(req: ScenarioRequest) -> np.ndarray:
-    """Explicit grid if supplied, else a qualifying draw under the chosen weather."""
+    """Explicit grid if supplied, else a per-track qualifying draw under the weather."""
     r = ratings()
     if req.grid:
         by_id = {e.id: i for i, e in enumerate(entrants())}
@@ -63,14 +93,23 @@ def _grid_from_request(req: ScenarioRequest) -> np.ndarray:
             grid[idx] = next_pos
             next_pos += 1
         return grid
-    seed = req.qualifyingSeed if req.qualifyingSeed is not None else 2026
-    rng = np.random.default_rng(seed)
+    rng = np.random.default_rng(_track_seed(req.trackRound, req.qualifyingSeed))
     return simulate_qualifying(Conditions(0.0, WETNESS[req.weather], 0.0), rng)
 
 
 @app.get("/health")
 def health():
     return {"status": "ok", "season": REGULATIONS_2026["season"]}
+
+
+@app.get("/tracks", response_model=TracksResponse)
+def tracks() -> TracksResponse:
+    """The full 2026 calendar (played + upcoming) with per-circuit characteristics."""
+    return TracksResponse(
+        season=REGULATIONS_2026["season"],
+        nextUpcomingRound=next_upcoming_round(),
+        tracks=[_track_dto(t) for t in CALENDAR_2026],
+    )
 
 
 @app.get("/grid")
@@ -109,9 +148,9 @@ def model_info():
 
 @app.post("/qualifying", response_model=QualifyingResponse)
 def qualifying(req: QualifyingRequest) -> QualifyingResponse:
-    """Generate a plausible 2026 qualifying grid for the chosen weather."""
+    """Generate a plausible 2026 qualifying grid for the chosen track and weather."""
     r = ratings()
-    seed = req.seed if req.seed is not None else int(np.random.default_rng().integers(1, 1_000_000))
+    seed = _track_seed(req.trackRound, req.seed)
     rng = np.random.default_rng(seed)
     grid = simulate_qualifying(Conditions(0.0, WETNESS[req.weather], 0.0), rng)
 
@@ -139,12 +178,21 @@ def qualifying(req: QualifyingRequest) -> QualifyingResponse:
 
 @app.post("/predict", response_model=PredictionResponse)
 def predict(req: ScenarioRequest) -> PredictionResponse:
-    """Predict per-driver win/podium/points odds under the chosen 2026 scenario."""
+    """Predict per-driver win/podium/points odds for the chosen circuit and scenario."""
     wetness = WETNESS[req.weather]
+
+    # The selected circuit supplies its intrinsic characteristics; if none is chosen we
+    # fall back to the Conditions defaults (the 2026 regulation baseline).
+    track: Optional[Track] = track_for(req.trackRound) if req.trackRound else None
+    overtaking_ease = track.overtaking_ease if track else Conditions.overtaking_ease
+    tyre_stress = track.tyre_stress if track else Conditions.tyre_stress
+
     cond = Conditions(
         safety_car_prob=req.safetyCarProbability,
         wetness=wetness,
         tyre_offset=req.tyreOffsetSeconds,
+        overtaking_ease=overtaking_ease,
+        tyre_stress=tyre_stress,
     ).clamped()
 
     grid = _grid_from_request(req)
@@ -178,11 +226,14 @@ def predict(req: ScenarioRequest) -> PredictionResponse:
 
     info = ml.model_info()
     return PredictionResponse(
+        track=_track_dto(track) if track else None,
         scenario=ScenarioEcho(
             safetyCarProbability=cond.safety_car_prob,
             weather=req.weather,
             wetness=wetness,
             tyreOffsetSeconds=cond.tyre_offset,
+            overtakingEase=cond.overtaking_ease,
+            tyreStress=cond.tyre_stress,
             monteCarloSims=req.monteCarloSims,
         ),
         predictions=preds,

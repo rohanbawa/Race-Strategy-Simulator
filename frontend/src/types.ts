@@ -144,6 +144,26 @@ export interface UndercutResult {
 
 export type Weather = 'DRY' | 'MIXED' | 'WET';
 
+export interface Track {
+  round: number;
+  name: string;
+  country: string;
+  circuit: string;
+  date: string;
+  laps: number;
+  kind: string;
+  overtakingEase: number;
+  tyreStress: number;
+  safetyCarRate: number;
+  played: boolean;
+}
+
+export interface TracksResponse {
+  season: number;
+  nextUpcomingRound: number;
+  tracks: Track[];
+}
+
 export interface GridEntry {
   id: number;
   code: string;
@@ -182,6 +202,8 @@ export interface ScenarioEcho {
   weather: Weather;
   wetness: number;
   tyreOffsetSeconds: number;
+  overtakingEase: number;
+  tyreStress: number;
   monteCarloSims: number;
 }
 
@@ -195,6 +217,7 @@ export interface ModelSummary {
 }
 
 export interface PredictionResponse {
+  track: Track | null;
   scenario: ScenarioEcho;
   predictions: DriverPrediction[];
   model: ModelSummary;
@@ -202,6 +225,7 @@ export interface PredictionResponse {
 }
 
 export interface PredictRequest {
+  trackRound?: number;
   safetyCarProbability: number;
   weather: Weather;
   tyreOffsetSeconds: number;

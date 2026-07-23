@@ -23,8 +23,9 @@ class GridSlot(BaseModel):
 
 
 class ScenarioRequest(BaseModel):
-    """The three 2026 scenario levers, plus an optional explicit grid."""
+    """The 2026 scenario levers, the chosen circuit, plus an optional explicit grid."""
 
+    trackRound: Optional[int] = Field(None, ge=1, le=24)
     safetyCarProbability: float = Field(0.35, ge=0.0, le=1.0)
     weather: Weather = Weather.DRY
     tyreOffsetSeconds: float = Field(0.35, ge=0.0, le=2.0)
@@ -34,8 +35,29 @@ class ScenarioRequest(BaseModel):
 
 
 class QualifyingRequest(BaseModel):
+    trackRound: Optional[int] = Field(None, ge=1, le=24)
     weather: Weather = Weather.DRY
     seed: Optional[int] = None
+
+
+class TrackDto(BaseModel):
+    round: int
+    name: str
+    country: str
+    circuit: str
+    date: str
+    laps: int
+    kind: str
+    overtakingEase: float
+    tyreStress: float
+    safetyCarRate: float
+    played: bool
+
+
+class TracksResponse(BaseModel):
+    season: int
+    nextUpcomingRound: int
+    tracks: List[TrackDto]
 
 
 class GridEntry(BaseModel):
@@ -71,6 +93,8 @@ class ScenarioEcho(BaseModel):
     weather: Weather
     wetness: float
     tyreOffsetSeconds: float
+    overtakingEase: float
+    tyreStress: float
     monteCarloSims: int
 
 
@@ -84,6 +108,7 @@ class ModelSummary(BaseModel):
 
 
 class PredictionResponse(BaseModel):
+    track: Optional[TrackDto]
     scenario: ScenarioEcho
     predictions: List[DriverPrediction]
     model: ModelSummary

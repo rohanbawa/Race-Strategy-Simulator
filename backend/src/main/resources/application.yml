@@ -23,7 +23,9 @@ spring:
 
 racesim:
   cors:
-    allowed-origins: http://localhost:5173
+    # Patterns (see CorsConfig) - allow any local dev port so a Vite port hop (5173 -> 5174)
+    # doesn't 403 POST requests. Tighten to an explicit origin for a real deployment.
+    allowed-origins: http://localhost:*,http://127.0.0.1:*
   data-sources:
     # Jolpica is the community-run successor to the retired Ergast API - same schema, same endpoints.
     jolpica-base-url: https://api.jolpi.ca/ergast/f1

@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type {
   DriverPrediction,
   GridEntry,
   GridInfoResponse,
   PredictionResponse,
+  Track,
   Weather,
 } from '../types';
 
@@ -28,71 +29,108 @@ function tyreLabel(s: number): string {
   return 'Extreme';
 }
 
+function overtakingLabel(e: number): string {
+  if (e < 0.3) return 'Very hard';
+  if (e < 0.5) return 'Hard';
+  if (e < 0.7) return 'Moderate';
+  return 'Easy';
+}
+
 export default function RaceWinnerPage() {
   const [info, setInfo] = useState<GridInfoResponse | null>(null);
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [selectedRound, setSelectedRound] = useState<number | null>(null);
   const [grid, setGrid] = useState<GridEntry[]>([]);
   const [weather, setWeather] = useState<Weather>('DRY');
   const [safetyCar, setSafetyCar] = useState(0.3);
   const [tyreOffset, setTyreOffset] = useState(0.35);
 
   const [result, setResult] = useState<PredictionResponse | null>(null);
-  const [loadingGrid, setLoadingGrid] = useState(false);
   const [predicting, setPredicting] = useState(false);
+  const [loadingGrid, setLoadingGrid] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Keeps the latest slider values available to auto-predict without stale closures.
-  const conditionsRef = useRef({ safetyCar, tyreOffset });
-  conditionsRef.current = { safetyCar, tyreOffset };
+  const selectedTrack = tracks.find((t) => t.round === selectedRound) ?? null;
 
-  const runPrediction = useCallback(async (currentGrid: GridEntry[], currentWeather: Weather) => {
-    if (currentGrid.length === 0) return;
-    setPredicting(true);
-    setError(null);
-    try {
-      const res = await api.predictRaceWinner({
-        weather: currentWeather,
-        safetyCarProbability: conditionsRef.current.safetyCar,
-        tyreOffsetSeconds: conditionsRef.current.tyreOffset,
-        grid: currentGrid.map((g) => ({ driverId: g.id, position: g.gridPosition })),
-        monteCarloSims: 4000,
-      });
-      setResult(res);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setPredicting(false);
-    }
-  }, []);
+  // Pure predictor: everything it needs is passed in, so handler-driven auto-runs
+  // never read stale slider state.
+  const predictWith = useCallback(
+    async (round: number, currentGrid: GridEntry[], w: Weather, sc: number, tyre: number) => {
+      if (currentGrid.length === 0) return;
+      setPredicting(true);
+      setError(null);
+      try {
+        const res = await api.predictRaceWinner({
+          trackRound: round,
+          weather: w,
+          safetyCarProbability: sc,
+          tyreOffsetSeconds: tyre,
+          grid: currentGrid.map((g) => ({ driverId: g.id, position: g.gridPosition })),
+          monteCarloSims: 4000,
+        });
+        setResult(res);
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setPredicting(false);
+      }
+    },
+    [],
+  );
 
-  // Draw a fresh qualifying grid under the given weather, then predict on it.
-  const regenerateGrid = useCallback(
-    async (nextWeather: Weather, seed?: number) => {
+  // Draw a fresh grid for a circuit + weather, then predict on it.
+  const regenAndPredict = useCallback(
+    async (round: number, w: Weather, sc: number, tyre: number, seed?: number) => {
       setLoadingGrid(true);
       setError(null);
       try {
-        const q = await api.generateQualifying(nextWeather, seed);
+        const q = await api.generateQualifying(w, round, seed);
         setGrid(q.grid);
-        await runPrediction(q.grid, nextWeather);
+        await predictWith(round, q.grid, w, sc, tyre);
       } catch (e) {
         setError((e as Error).message);
       } finally {
         setLoadingGrid(false);
       }
     },
-    [runPrediction],
+    [predictWith],
   );
 
   useEffect(() => {
-    api.getGridInfo().then(setInfo).catch(() => setInfo(null));
-    regenerateGrid('DRY', 2026);
+    let cancelled = false;
+    api.getGridInfo().then((i) => !cancelled && setInfo(i)).catch(() => setInfo(null));
+    api
+      .getTracks()
+      .then((resp) => {
+        if (cancelled) return;
+        setTracks(resp.tracks);
+        const first = resp.tracks.find((t) => t.round === resp.nextUpcomingRound) ?? resp.tracks[0];
+        if (!first) return;
+        setSelectedRound(first.round);
+        setSafetyCar(first.safetyCarRate);
+        regenAndPredict(first.round, 'DRY', first.safetyCarRate, 0.35);
+      })
+      .catch((e) => setError((e as Error).message));
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const changeWeather = (w: Weather) => {
-    setWeather(w);
-    regenerateGrid(w); // grid depends on weather (wet qualifying is messier)
+  const selectTrack = (round: number) => {
+    const t = tracks.find((x) => x.round === round);
+    if (!t) return;
+    setSelectedRound(round);
+    setSafetyCar(t.safetyCarRate); // pre-fill safety-car odds from the circuit's tendency
+    regenAndPredict(round, weather, t.safetyCarRate, tyreOffset);
   };
 
+  const changeWeather = (w: Weather) => {
+    setWeather(w);
+    if (selectedRound != null) regenAndPredict(selectedRound, w, safetyCar, tyreOffset);
+  };
+
+  const busy = predicting || loadingGrid;
   const preds = result?.predictions ?? [];
   const maxWin = preds.length > 0 ? Math.max(...preds.map((p) => p.winProbability)) : 1;
   const podium = preds.slice(0, 3);
@@ -106,14 +144,49 @@ export default function RaceWinnerPage() {
         <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 32, margin: '4px 0' }}>
           Predict the race winner
         </h1>
-        <p style={{ color: 'var(--text-muted)', margin: 0, maxWidth: 720 }}>
-          Set the race conditions and a random-forest model — trained on a physics-informed
-          Monte-Carlo of the 2026 grid — estimates each driver's win, podium and points odds.
-          Adjust safety-car risk, weather and tyre-strategy offset and watch the field reshuffle.
+        <p style={{ color: 'var(--text-muted)', margin: 0, maxWidth: 730 }}>
+          Pick a round from the 2026 calendar and a random-forest model estimates each driver's win,
+          podium and points odds. Every circuit carries its own overtaking difficulty, tyre stress and
+          safety-car tendency — so Monaco rewards grid position while Monza rewards raw pace — on top of
+          the weather and tyre-offset you set.
         </p>
       </div>
 
-      <Panel title="Race conditions">
+      <Panel title="1 · Pick a race">
+        {tracks.length === 0 && !error ? (
+          <div style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-data)', fontSize: 13 }}>Loading calendar…</div>
+        ) : (
+          <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <Control label="2026 calendar">
+              <select
+                value={selectedRound ?? ''}
+                onChange={(e) => selectTrack(Number(e.target.value))}
+                disabled={busy || tracks.length === 0}
+                style={{ ...selectStyle, minWidth: 340 }}
+              >
+                <optgroup label="Upcoming">
+                  {tracks.filter((t) => !t.played).map((t) => (
+                    <option key={t.round} value={t.round}>
+                      R{String(t.round).padStart(2, '0')} · {t.name} — {t.date}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Completed">
+                  {tracks.filter((t) => t.played).map((t) => (
+                    <option key={t.round} value={t.round}>
+                      R{String(t.round).padStart(2, '0')} · {t.name} ✓
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </Control>
+
+            {selectedTrack && <TrackInfo track={selectedTrack} />}
+          </div>
+        )}
+      </Panel>
+
+      <Panel title="2 · Race conditions">
         <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <Control label="Weather">
             <div style={{ display: 'flex', gap: 6 }}>
@@ -123,6 +196,7 @@ export default function RaceWinnerPage() {
                   <button
                     key={opt.value}
                     onClick={() => changeWeather(opt.value)}
+                    disabled={busy}
                     title={opt.hint}
                     style={{
                       background: active ? 'var(--f1-red)' : 'var(--bg-panel-inset)',
@@ -133,7 +207,7 @@ export default function RaceWinnerPage() {
                       fontFamily: 'var(--font-display)',
                       fontWeight: 600,
                       fontSize: 14,
-                      cursor: 'pointer',
+                      cursor: busy ? 'default' : 'pointer',
                     }}
                   >
                     {opt.label}
@@ -157,7 +231,7 @@ export default function RaceWinnerPage() {
               style={{ width: 220, accentColor: 'var(--f1-red)' }}
             />
             <span style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 6 }}>
-              a safety car bunches the field & throws a strategy lottery
+              pre-filled from the circuit; drag to override
             </span>
           </Control>
 
@@ -172,23 +246,26 @@ export default function RaceWinnerPage() {
               style={{ width: 220, accentColor: 'var(--f1-red)' }}
             />
             <span style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 6 }}>
-              bigger compound delta = more strategic upsets (2026 narrow tyres)
+              amplified on this circuit's tyre stress
             </span>
           </Control>
         </div>
 
         <div style={{ display: 'flex', gap: 12, marginTop: 20, flexWrap: 'wrap' }}>
           <button
-            onClick={() => runPrediction(grid, weather)}
-            disabled={predicting || loadingGrid || grid.length === 0}
-            style={primaryBtn(predicting || loadingGrid)}
+            onClick={() => selectedRound != null && predictWith(selectedRound, grid, weather, safetyCar, tyreOffset)}
+            disabled={busy || grid.length === 0 || selectedRound == null}
+            style={primaryBtn(busy)}
           >
             {predicting ? 'Predicting…' : 'Run prediction'}
           </button>
           <button
-            onClick={() => regenerateGrid(weather)}
-            disabled={loadingGrid || predicting}
-            style={secondaryBtn(loadingGrid || predicting)}
+            onClick={() =>
+              selectedRound != null &&
+              regenAndPredict(selectedRound, weather, safetyCar, tyreOffset, Math.floor(Math.random() * 1e6))
+            }
+            disabled={busy || selectedRound == null}
+            style={secondaryBtn(busy)}
           >
             {loadingGrid ? 'Qualifying…' : '↻ New qualifying'}
           </button>
@@ -214,7 +291,7 @@ export default function RaceWinnerPage() {
       )}
 
       {podium.length === 3 && (
-        <Panel title="Predicted podium">
+        <Panel title={result?.track ? `Predicted podium — ${result.track.name}` : 'Predicted podium'}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
             {[podium[1], podium[0], podium[2]].map((p, i) => (
               <PodiumCard key={p.id} p={p} place={i === 1 ? 1 : i === 0 ? 2 : 3} />
@@ -255,6 +332,72 @@ export default function RaceWinnerPage() {
 
       {info && <ModelPanel info={info} sims={result?.scenario.monteCarloSims ?? 4000} />}
       {info && <RegulationsPanel notes={info.regulationNotes} overtakingEase={info.overtakingEase} />}
+    </div>
+  );
+}
+
+function TrackInfo({ track }: { track: Track }) {
+  return (
+    <div
+      style={{
+        flex: 1,
+        minWidth: 320,
+        background: 'var(--bg-panel-inset)',
+        border: '1px solid var(--line)',
+        borderRadius: 'var(--radius-md)',
+        padding: 16,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18 }}>{track.circuit}</span>
+        <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>{track.country}</span>
+        <StatusBadge played={track.played} />
+      </div>
+      <div style={{ fontFamily: 'var(--font-data)', fontSize: 12, color: 'var(--text-faint)', marginTop: 4 }}>
+        Round {track.round} · {track.date} · {track.laps} laps · {track.kind}
+      </div>
+      <div style={{ display: 'flex', gap: 22, marginTop: 14, flexWrap: 'wrap' }}>
+        <MiniStat label="overtaking" value={overtakingLabel(track.overtakingEase)} frac={track.overtakingEase} />
+        <MiniStat label="tyre stress" value={tyreLabel(track.tyreStress - 0.4)} frac={(track.tyreStress - 0.6) / 0.9} />
+        <MiniStat label="typical SC" value={scLabel(track.safetyCarRate)} frac={track.safetyCarRate} />
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ played }: { played: boolean }) {
+  return (
+    <span
+      style={{
+        fontFamily: 'var(--font-data)',
+        fontSize: 10,
+        fontWeight: 700,
+        textTransform: 'uppercase',
+        letterSpacing: '0.04em',
+        padding: '2px 7px',
+        borderRadius: 3,
+        color: played ? 'var(--text-faint)' : 'var(--accent-positive)',
+        border: `1px solid ${played ? 'var(--line-bright)' : 'var(--accent-positive)'}`,
+      }}
+    >
+      {played ? 'completed' : 'upcoming'}
+    </span>
+  );
+}
+
+function MiniStat({ label, value, frac }: { label: string; value: string; frac: number }) {
+  const pct = Math.max(0, Math.min(1, frac)) * 100;
+  return (
+    <div style={{ minWidth: 90 }}>
+      <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
+        {label}
+      </div>
+      <div style={{ fontFamily: 'var(--font-data)', fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', margin: '2px 0 5px' }}>
+        {value}
+      </div>
+      <div style={{ height: 5, background: 'var(--bg-panel)', borderRadius: 2, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: 5, background: 'var(--f1-red)', opacity: 0.75 }} />
+      </div>
     </div>
   );
 }
@@ -395,9 +538,10 @@ function ModelPanel({ info, sims }: { info: GridInfoResponse; sims: number }) {
       </div>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '0 0 16px 0', maxWidth: 760 }}>
         A <strong style={{ color: 'var(--text-primary)' }}>{m.model_type}</strong> ({m.features.length} features)
-        learns win probability from a physics-informed simulation of the 2026 grid, since no 2026 race
-        history exists yet. Podium, points and average-finish come from a Monte-Carlo of the same model
-        under your exact conditions. The headline win % below sums to 100% across the field.
+        learns win probability from a physics-informed simulation of the 2026 grid — including each circuit's
+        overtaking difficulty and tyre stress — since no 2026 race history exists yet. Podium, points and
+        average-finish come from a Monte-Carlo of the same model under your exact conditions. The headline
+        win % below sums to 100% across the field.
       </p>
       <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--text-faint)', textTransform: 'uppercase', marginBottom: 8 }}>
         What the model weighs most
@@ -428,8 +572,8 @@ function RegulationsPanel({ notes, overtakingEase }: { notes: string[]; overtaki
         ))}
       </ul>
       <p style={{ color: 'var(--text-faint)', fontSize: 12, marginTop: 12, marginBottom: 0 }}>
-        Overtaking-ease factor set to {overtakingEase.toFixed(2)} — active aero + the Manual Override boost
-        make passing easier, so grid position matters less than in the DRS era and raw pace matters more.
+        Baseline overtaking-ease {overtakingEase.toFixed(2)} — active aero + the Manual Override boost make
+        passing easier than the DRS era; each circuit then adjusts this up or down from that baseline.
       </p>
     </Panel>
   );
@@ -485,6 +629,18 @@ function Stat({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+const selectStyle: React.CSSProperties = {
+  background: 'var(--bg-panel-inset)',
+  color: 'var(--text-primary)',
+  border: '1px solid var(--line-bright)',
+  borderRadius: 'var(--radius-sm)',
+  padding: '10px 12px',
+  fontFamily: 'var(--font-data)',
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: 'pointer',
+};
 
 function primaryBtn(disabled: boolean): React.CSSProperties {
   return {

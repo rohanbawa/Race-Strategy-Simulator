@@ -31,7 +31,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.utils.pa
 from .features import FEATURE_COLUMNS, build_features
 from .simulator import Conditions, generate_races, ratings
 
-MODEL_VERSION = "2026.1"
+MODEL_VERSION = "2026.2"  # track-aware: adds circuit overtaking/tyre-stress features
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "models")
 MODEL_PATH = os.path.join(MODEL_DIR, "race_winner.joblib")
 

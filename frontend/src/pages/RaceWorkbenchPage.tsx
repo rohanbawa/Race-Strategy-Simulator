@@ -199,14 +199,15 @@ export default function RaceWorkbenchPage() {
             )}
           </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+            <TimeCard
+              label={simResult.actualDataComplete ? 'Actual time' : 'Actual time (partial)'}
+              value={simResult.actualTotalTimeSeconds != null ? formatDuration(simResult.actualTotalTimeSeconds) : '—'}
+            />
+            <TimeCard label="Simulated time" value={formatDuration(simResult.simulatedTotalTimeSeconds)} />
+          </div>
+
           <div style={{ display: 'flex', gap: 32, marginBottom: 8, flexWrap: 'wrap' }}>
-            <Stat label="simulated time" value={formatDuration(simResult.simulatedTotalTimeSeconds)} />
-            {simResult.actualTotalTimeSeconds != null && (
-              <Stat
-                label={simResult.actualDataComplete ? 'actual time' : 'actual time (partial)'}
-                value={formatDuration(simResult.actualTotalTimeSeconds)}
-              />
-            )}
             {simResult.deltaSeconds != null && (
               <Stat
                 label="delta"
@@ -305,10 +306,47 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   );
 }
 
+function TimeCard({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  return (
+    <div
+      style={{
+        background: 'var(--bg-panel-inset)',
+        border: '1px solid var(--line)',
+        borderRadius: 'var(--radius-md)',
+        padding: '16px 18px',
+      }}
+    >
+      <div
+        style={{
+          fontFamily: 'var(--font-data)',
+          fontSize: 11,
+          color: 'var(--text-faint)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontFamily: 'var(--font-data)',
+          fontSize: 28,
+          fontWeight: 700,
+          color: accent ?? 'var(--text-primary)',
+          marginTop: 6,
+          letterSpacing: '0.01em',
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+// Always h:mm:ss.mmm so every race-time readout shares one format, regardless of length.
 function formatDuration(totalSeconds: number): string {
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = (totalSeconds % 60).toFixed(3);
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${s.padStart(6, '0')}`;
-  return `${m}:${s.padStart(6, '0')}`;
+  return `${h}:${String(m).padStart(2, '0')}:${s.padStart(6, '0')}`;
 }

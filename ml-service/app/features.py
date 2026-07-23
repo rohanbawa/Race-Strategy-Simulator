@@ -35,8 +35,12 @@ FEATURE_COLUMNS: List[str] = [
     "safety_car_prob",
     "wetness",
     "tyre_offset",
+    "overtaking_ease",       # circuit: how easy passing is (Monaco low, Monza high)
+    "tyre_stress",           # circuit: how punishing the track is on tyres
     "grid_x_safety_car",     # starting back is less costly when a SC is likely
     "grid_x_tyre_offset",    # ...and when tyre strategy can shuffle the order
+    "grid_x_hard_to_pass",   # ...but far more costly where you can't overtake
+    "tyre_offset_x_stress",  # tyre offset bites harder on high-degradation circuits
     "wet_x_wet_skill",       # rain rewards wet-weather craft
     "wet_x_car_gap",         # rain lets a weaker car punch above the machinery
 ]
@@ -57,6 +61,8 @@ def build_features(cond: Conditions, grid: np.ndarray) -> pd.DataFrame:
     sc = np.full(r.n, cond.safety_car_prob)
     wet = np.full(r.n, cond.wetness)
     tyre = np.full(r.n, cond.tyre_offset)
+    overtaking = np.full(r.n, cond.overtaking_ease)
+    stress = np.full(r.n, cond.tyre_stress)
 
     data = {
         "car_rating": car,
@@ -71,8 +77,12 @@ def build_features(cond: Conditions, grid: np.ndarray) -> pd.DataFrame:
         "safety_car_prob": sc,
         "wetness": wet,
         "tyre_offset": tyre,
+        "overtaking_ease": overtaking,
+        "tyre_stress": stress,
         "grid_x_safety_car": grid_norm * sc,
         "grid_x_tyre_offset": grid_norm * tyre,
+        "grid_x_hard_to_pass": grid_norm * (1.0 - overtaking),
+        "tyre_offset_x_stress": tyre * stress,
         "wet_x_wet_skill": wet * r.wet_skill,
         "wet_x_car_gap": wet * car_gap,
     }

@@ -13,8 +13,11 @@ public class CorsConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
+        // allowedOriginPatterns (not allowedOrigins) so wildcards like http://localhost:*
+        // are honored - Vite hops to 5174/5175/... when 5173 is busy, and a same-origin
+        // POST still carries an Origin header, so a hardcoded single port 403s those POSTs.
         registry.addMapping("/api/**")
-                .allowedOrigins(allowedOrigins.split(","))
+                .allowedOriginPatterns(allowedOrigins.split(","))
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*");
     }

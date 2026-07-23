@@ -108,12 +108,17 @@ isolation (mocked repositories, no network) — the part of the codebase most wo
 
 `ml-service/` is a standalone Python microservice (FastAPI + scikit-learn) that predicts, for
 the **2026 grid under 2026 regulations**, how likely each driver is to win / finish on the
-podium / score points given three scenario levers you set:
+podium / score points. You **pick a round from the 2026 calendar** (played or upcoming) and set
+three scenario levers:
 
-- **Safety-car probability** — a safety car bunches the field and throws a strategy lottery.
+- **Circuit** — each of the 24 rounds carries its own overtaking difficulty, tyre stress and
+  typical safety-car rate, so Monaco rewards grid position while Monza rewards raw pace. Picking
+  a track is the first step of the flow and genuinely changes the odds.
+- **Safety-car probability** — a safety car bunches the field and throws a strategy lottery
+  (pre-filled from the circuit's tendency, then adjustable).
 - **Weather** — dry / mixed / wet; rain compresses car advantage and rewards driver skill.
 - **Tyre offset** — how big the compound/strategy delta is; larger offsets create more upsets
-  (sharpened by 2026's narrower tyres).
+  (sharpened by 2026's narrower tyres and amplified on high-tyre-stress circuits).
 
 ### Why a simulator-trained model
 
@@ -148,22 +153,25 @@ python train.py --races 8000
 | Method | Path | Description |
 |---|---|---|
 | GET | `/health` | Liveness check |
+| GET | `/tracks` | Full 2026 calendar (played + upcoming) with per-circuit characteristics |
 | GET | `/grid` | 2026 field, regulation notes, and trained-model metadata |
-| POST | `/qualifying` | Generate a plausible 2026 starting grid for a given weather |
-| POST | `/predict` | Win / podium / points odds for the whole field under chosen conditions |
+| POST | `/qualifying` | Generate a plausible 2026 starting grid for a given track + weather |
+| POST | `/predict` | Win / podium / points odds for the whole field under chosen circuit + conditions |
 | GET  | `/model-info` | Model type, training size, accuracy, feature importances |
 
 Example predict request:
 ```json
 POST /predict
 {
+  "trackRound": 8,
   "safetyCarProbability": 0.4,
   "weather": "WET",
   "tyreOffsetSeconds": 0.6,
-  "qualifyingSeed": 2026,
   "monteCarloSims": 4000
 }
 ```
+`trackRound` (1–24) selects the circuit; omit it to use the 2026 regulation-baseline
+characteristics. The circuit's overtaking-ease and tyre-stress feed straight into the model.
 The frontend reaches this service through the Vite dev proxy at `/ml/*` (see `vite.config.ts`),
 so no CORS setup is needed in development.
 

@@ -47,23 +47,33 @@ TYRE_SKILL_GAIN = 2.5          # better drivers extract more from a tyre offset
 
 QUALI_NOISE_SD = 0.16          # one-lap qualifying scatter (seconds, dry)
 
-_OVERTAKING_EASE = float(REGULATIONS_2026["overtaking_ease"])
-_TYRE_SENSITIVITY = float(REGULATIONS_2026["tyre_sensitivity"])
+# Defaults used when no track is selected (2026 regulation baseline). A chosen circuit
+# overrides these per-race via the Conditions fields.
+_DEFAULT_OVERTAKING_EASE = float(REGULATIONS_2026["overtaking_ease"])
+_DEFAULT_TYRE_STRESS = float(REGULATIONS_2026["tyre_sensitivity"])
 
 
 @dataclass(frozen=True)
 class Conditions:
-    """The three scenario levers the user sets, plus the field size."""
+    """
+    The scenario the model reasons over: the three race-day levers the user sets, plus
+    the two intrinsic circuit characteristics supplied by the selected track (defaults
+    match the 2026 regulation baseline, so a track-less call still behaves sensibly).
+    """
 
     safety_car_prob: float   # 0-1, probability of a race-defining safety car
     wetness: float           # 0 = dry, 0.5 = mixed/damp, 1 = full wet
     tyre_offset: float       # >= 0, strategic tyre-performance spread (s/lap)
+    overtaking_ease: float = _DEFAULT_OVERTAKING_EASE   # circuit: 0 = can't pass, 1 = easy
+    tyre_stress: float = _DEFAULT_TYRE_STRESS           # circuit: tyre-punishment multiplier
 
     def clamped(self) -> "Conditions":
         return Conditions(
             safety_car_prob=float(np.clip(self.safety_car_prob, 0.0, 1.0)),
             wetness=float(np.clip(self.wetness, 0.0, 1.0)),
             tyre_offset=float(np.clip(self.tyre_offset, 0.0, 2.0)),
+            overtaking_ease=float(np.clip(self.overtaking_ease, 0.05, 0.95)),
+            tyre_stress=float(np.clip(self.tyre_stress, 0.5, 1.6)),
         )
 
 
@@ -123,7 +133,8 @@ def _race_scores(cond: Conditions, grid: np.ndarray, rng: np.random.Generator) -
     r = ratings()
     deficit = _base_race_deficit(cond, r).copy()
 
-    track_term = (grid - 1) * TRACK_POSITION_COST * (1.0 - _OVERTAKING_EASE)
+    # Harder-to-pass circuits (low overtaking_ease) make the grid slot far costlier.
+    track_term = (grid - 1) * TRACK_POSITION_COST * (1.0 - cond.overtaking_ease)
 
     sc_occurs = rng.random() < cond.safety_car_prob * SC_PROB_TO_EVENT
     if sc_occurs:
@@ -133,7 +144,8 @@ def _race_scores(cond: Conditions, grid: np.ndarray, rng: np.random.Generator) -
     else:
         sc_shuffle = 0.0
 
-    tyre_sd = cond.tyre_offset * TYRE_VARIANCE * _TYRE_SENSITIVITY
+    # Tyre-punishing circuits amplify the strategic swing a tyre offset creates.
+    tyre_sd = cond.tyre_offset * TYRE_VARIANCE * cond.tyre_stress
     tyre_shuffle = rng.normal(0.0, tyre_sd, size=r.n) if tyre_sd > 0 else 0.0
     tyre_skill = -(r.driver - 80.0) / 100.0 * cond.tyre_offset * TYRE_SKILL_GAIN
 
@@ -182,11 +194,13 @@ def monte_carlo(
 
 
 def sample_conditions(rng: np.random.Generator) -> Conditions:
-    """Draw a plausible race scenario for training-data generation."""
+    """Draw a plausible race scenario (incl. circuit characteristics) for training."""
     return Conditions(
         safety_car_prob=float(rng.beta(1.6, 3.0)),      # skewed toward lower SC odds
         wetness=float(rng.choice([0.0, 0.0, 0.0, 0.35, 0.7, 1.0])),  # mostly dry
         tyre_offset=float(np.abs(rng.normal(0.35, 0.30))),
+        overtaking_ease=float(rng.uniform(0.12, 0.90)),  # full circuit range
+        tyre_stress=float(rng.uniform(0.75, 1.45)),
     )
 
 
