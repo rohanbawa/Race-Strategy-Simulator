@@ -135,6 +135,8 @@ public class RaceIngestionService {
             byExternalRef.put(externalRef, driver);
         }
         return byExternalRef;
+
+
     }
 
     private void ingestLapTimes(int season, int round, Race race, Map<String, Driver> driversByExternalRef) {

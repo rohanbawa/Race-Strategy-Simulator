@@ -1,14 +1,20 @@
-# Pit Wall — Race Strategy Simulator
+# Pit Wall — Race Strategy Simulator + 2026 Race-Winner Predictor
 
-Pulls real historical F1 stint/pit-stop/lap data into a Spring Boot backend, then lets you
-build a hypothetical strategy — different tire compounds, different stop laps — and compares
-it lap-by-lap against what the driver actually did. Also answers the classic "would the
-undercut have worked?" question.
+Two tools behind one top toolbar:
+
+1. **Strategy Sim** — pulls real historical F1 stint/pit-stop/lap data into a Spring Boot
+   backend, then lets you build a hypothetical strategy (different tire compounds, different
+   stop laps) and compares it lap-by-lap against what the driver actually did. Also answers
+   the classic "would the undercut have worked?" question.
+2. **Predict Race Winner** — a Python machine-learning service that estimates each 2026
+   driver's win / podium / points odds under conditions you choose: safety-car risk, weather,
+   and tyre-strategy offset, all under the new 2026 regulations.
 
 ```
 race-strategy-simulator/
-├── backend/    Spring Boot 3 / Java 17 — REST API, data model, simulation engine, ingestion
-└── frontend/   React 18 / TypeScript / Vite — strategy builder UI
+├── backend/      Spring Boot 3 / Java 17 — REST API, data model, simulation engine, ingestion
+├── ml-service/   Python 3 / FastAPI / scikit-learn — 2026 race-winner ML predictor
+└── frontend/     React 18 / TypeScript / Vite — strategy builder + prediction UI
 ```
 
 ## Why this shape
@@ -98,6 +104,69 @@ mvn test
 `TireDegradationModelTest` and `StrategySimulationServiceTest` cover the simulation engine in
 isolation (mocked repositories, no network) — the part of the codebase most worth trusting.
 
+## Race-winner predictor (ML service)
+
+`ml-service/` is a standalone Python microservice (FastAPI + scikit-learn) that predicts, for
+the **2026 grid under 2026 regulations**, how likely each driver is to win / finish on the
+podium / score points given three scenario levers you set:
+
+- **Safety-car probability** — a safety car bunches the field and throws a strategy lottery.
+- **Weather** — dry / mixed / wet; rain compresses car advantage and rewards driver skill.
+- **Tyre offset** — how big the compound/strategy delta is; larger offsets create more upsets
+  (sharpened by 2026's narrower tyres).
+
+### Why a simulator-trained model
+
+There is no 2026 race history to learn from, so instead of fitting to results that don't exist
+yet, `simulator.py` encodes domain knowledge — car/driver pace, the 2026 regulation effects
+(new 50/50 power units, active aero + Manual Override making overtaking easier, narrower
+tyres, and the expanded 11-team grid with Audi and Cadillac) — into an explainable
+physics-informed Monte-Carlo generator. A `RandomForestClassifier` (`model.py`) is then
+trained on thousands of races sampled from it to learn `P(win | conditions, grid)`. The
+headline win % comes from that classifier; podium / points / average-finish come from a
+Monte-Carlo of the same generator under your exact scenario. Every constant lives in
+`grid_2026.py`, so the whole pipeline is editable and auditable.
+
+### Requirements
+- Python 3.10+
+
+### Run it
+```bash
+cd ml-service
+pip install -r requirements.txt
+uvicorn app.main:app --port 8000
+```
+Starts on `http://localhost:8000`. The model trains automatically on the first request that
+needs it (a few seconds) and is cached to `ml-service/models/race_winner.joblib`. To force a
+rebuild or tune the training-set size:
+```bash
+python train.py --races 8000
+```
+
+### API
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/health` | Liveness check |
+| GET | `/grid` | 2026 field, regulation notes, and trained-model metadata |
+| POST | `/qualifying` | Generate a plausible 2026 starting grid for a given weather |
+| POST | `/predict` | Win / podium / points odds for the whole field under chosen conditions |
+| GET  | `/model-info` | Model type, training size, accuracy, feature importances |
+
+Example predict request:
+```json
+POST /predict
+{
+  "safetyCarProbability": 0.4,
+  "weather": "WET",
+  "tyreOffsetSeconds": 0.6,
+  "qualifyingSeed": 2026,
+  "monteCarloSims": 4000
+}
+```
+The frontend reaches this service through the Vite dev proxy at `/ml/*` (see `vite.config.ts`),
+so no CORS setup is needed in development.
+
 ## Frontend
 
 ### Requirements
@@ -109,10 +178,17 @@ cd frontend
 npm install
 npm run dev
 ```
-Starts on `http://localhost:5173` and proxies `/api/*` to the backend on `:8080` (see
-`vite.config.ts`). Pick a race, pick a driver, and either read off their actual stint timeline
-or start editing the what-if strategy builder below it. The undercut panel at the bottom lets
-you pick a rival, a pit lap, and a compound, and tells you whether the swing works.
+Starts on `http://localhost:5173` and proxies `/api/*` to the Spring backend on `:8080` and
+`/ml/*` to the Python ML service on `:8000` (see `vite.config.ts`). The top toolbar switches
+between the two modes:
+
+- **1 · Strategy Sim** — pick a race, pick a driver, and either read off their actual stint
+  timeline or start editing the what-if strategy builder below it. The undercut panel at the
+  bottom lets you pick a rival, a pit lap, and a compound, and tells you whether the swing works.
+- **2 · Predict Race Winner** — set the safety-car, weather and tyre-offset conditions, (re)draw
+  a 2026 qualifying grid, and the ML service returns the predicted podium, a full-field win-
+  probability board, and a breakdown of what the model weighed. Requires the ML service running
+  on `:8000`.
 
 ### Build
 ```bash

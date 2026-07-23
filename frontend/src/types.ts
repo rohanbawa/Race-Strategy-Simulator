@@ -93,6 +93,16 @@ export interface LapSim {
   actualLapTimeSeconds: number | null;
   cumulativeDeltaSeconds: number;
   isPitLap: boolean;
+  cautionType: 'SC' | 'VSC' | null;
+}
+
+export interface CautionPeriod {
+  startLap: number;
+  endLap: number;
+  type: 'SC' | 'VSC';
+  fieldPaceSecondsPerLap: number;
+  baselinePaceSecondsPerLap: number;
+  driversAffected: number;
 }
 
 export interface SimulationResult {
@@ -128,4 +138,92 @@ export interface UndercutResult {
   gapAfterSequenceSeconds: number;
   undercutSucceeds: boolean;
   marginSeconds: number;
+}
+
+// --- 2026 race-winner ML prediction ---
+
+export type Weather = 'DRY' | 'MIXED' | 'WET';
+
+export interface GridEntry {
+  id: number;
+  code: string;
+  name: string;
+  team: string;
+  teamColor: string;
+  powerUnit: string;
+  gridPosition: number;
+  carRating: number;
+  driverRating: number;
+  wetSkill: number;
+}
+
+export interface QualifyingResponse {
+  weather: Weather;
+  grid: GridEntry[];
+}
+
+export interface DriverPrediction {
+  id: number;
+  code: string;
+  name: string;
+  team: string;
+  teamColor: string;
+  gridPosition: number;
+  winProbability: number;
+  podiumProbability: number;
+  pointsProbability: number;
+  meanFinish: number;
+  carRating: number;
+  driverRating: number;
+}
+
+export interface ScenarioEcho {
+  safetyCarProbability: number;
+  weather: Weather;
+  wetness: number;
+  tyreOffsetSeconds: number;
+  monteCarloSims: number;
+}
+
+export interface ModelSummary {
+  type: string;
+  version: string;
+  trainedAt: string;
+  nTrainRaces: number;
+  top1Accuracy: number;
+  logLoss: number;
+}
+
+export interface PredictionResponse {
+  scenario: ScenarioEcho;
+  predictions: DriverPrediction[];
+  model: ModelSummary;
+  regulationNotes: string[];
+}
+
+export interface PredictRequest {
+  safetyCarProbability: number;
+  weather: Weather;
+  tyreOffsetSeconds: number;
+  grid?: { driverId: number; position: number }[];
+  qualifyingSeed?: number;
+  monteCarloSims?: number;
+}
+
+export interface GridInfoResponse {
+  season: number;
+  regulationNotes: string[];
+  overtakingEase: number;
+  tyreSensitivity: number;
+  drivers: (GridEntry & { puAdaptation: number })[];
+  model: {
+    version: string;
+    model_type: string;
+    trained_at: string;
+    n_train_races: number;
+    n_train_rows: number;
+    metrics: { top1_accuracy: number; log_loss: number; mean_prob_on_actual_winner: number };
+    feature_importances: Record<string, number>;
+    features: string[];
+  };
 }

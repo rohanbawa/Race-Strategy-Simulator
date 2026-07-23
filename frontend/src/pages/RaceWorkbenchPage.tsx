@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
-import type { ActualStrategy, PlannedStint, RaceDetail, SimulationResult } from '../types';
+import type { ActualStrategy, CautionPeriod, PlannedStint, RaceDetail, SimulationResult } from '../types';
 import StintTimeline from '../components/StintTimeline';
 import StrategyBuilder from '../components/StrategyBuilder';
 import DeltaChart from '../components/DeltaChart';
@@ -18,12 +18,14 @@ export default function RaceWorkbenchPage() {
   const [simResult, setSimResult] = useState<SimulationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [simulating, setSimulating] = useState(false);
+  const [cautionPeriods, setCautionPeriods] = useState<CautionPeriod[]>([]);
 
   useEffect(() => {
     api.getRace(raceIdNum).then((d) => {
       setDetail(d);
       if (d.drivers.length > 0) setDriverId(d.drivers[0].id);
     }).catch((e) => setError(e.message));
+    api.getCautionPeriods(raceIdNum).then(setCautionPeriods).catch(() => setCautionPeriods([]));
   }, [raceIdNum]);
 
   useEffect(() => {
@@ -106,7 +108,13 @@ export default function RaceWorkbenchPage() {
 
       {actual && (
         <Panel title="What actually happened">
-          <StintTimeline stints={actual.stints} pitStops={actual.pitStops} totalLaps={totalLaps} label={`${actual.driverCode} — actual`} />
+          <StintTimeline
+            stints={actual.stints}
+            pitStops={actual.pitStops}
+            totalLaps={totalLaps}
+            label={`${actual.driverCode} — actual`}
+            cautionPeriods={cautionPeriods}
+          />
           <div style={{ display: 'flex', gap: 28, marginTop: 14, fontFamily: 'var(--font-data)', fontSize: 13 }}>
             <span style={{ color: 'var(--text-muted)' }}>
               race time: <span style={{ color: 'var(--text-primary)' }}>{formatDuration(actual.totalRaceTimeSeconds)}</span>
@@ -124,6 +132,28 @@ export default function RaceWorkbenchPage() {
       )}
 
       <Panel title="Build a what-if strategy">
+        {cautionPeriods.length > 0 && (
+          <div
+            style={{
+              border: '1px solid var(--accent-warning)',
+              borderRadius: 'var(--radius-sm)',
+              background: 'rgba(255, 212, 0, 0.08)',
+              padding: '10px 14px',
+              marginBottom: 16,
+              fontSize: 13,
+            }}
+          >
+            <span style={{ color: 'var(--accent-warning)', fontWeight: 700 }}>Caution windows detected</span>
+            <span style={{ color: 'var(--text-muted)' }}> — pitting inside one of these costs far less time. Set a stint to end on one of these laps to try it:</span>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 6, fontFamily: 'var(--font-data)' }}>
+              {cautionPeriods.map((c, i) => (
+                <span key={i} style={{ color: 'var(--text-primary)' }}>
+                  {c.type} · laps {c.startLap}–{c.endLap}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         {plan.length > 0 && (
           <StrategyBuilder plan={plan} onChange={setPlan} totalLaps={totalLaps} />
         )}
@@ -156,6 +186,7 @@ export default function RaceWorkbenchPage() {
                 .map((l, i) => ({ stopNumber: i + 1, lap: l.lap, stationaryTimeSeconds: 0, totalTimeLossSeconds: null }))}
               totalLaps={totalLaps}
               label={`${simResult.driverCode} — what-if`}
+              cautionPeriods={cautionPeriods}
             />
             {actual && (
               <StintTimeline
@@ -163,6 +194,7 @@ export default function RaceWorkbenchPage() {
                 pitStops={actual.pitStops}
                 totalLaps={totalLaps}
                 label={`${actual.driverCode} — actual`}
+                cautionPeriods={cautionPeriods}
               />
             )}
           </div>
@@ -215,7 +247,7 @@ export default function RaceWorkbenchPage() {
           )}
 
           <div style={{ marginTop: 16 }}>
-            <DeltaChart laps={simResult.laps} />
+            <DeltaChart laps={simResult.laps} cautionPeriods={cautionPeriods} />
           </div>
         </Panel>
       )}

@@ -1,6 +1,7 @@
 package com.racesim.controller;
 
 import com.racesim.dto.ActualStrategyDto;
+import com.racesim.dto.CautionPeriodDto;
 import com.racesim.dto.RaceDetailDto;
 import com.racesim.dto.RaceSummaryDto;
 import com.racesim.service.RaceQueryService;
@@ -31,5 +32,11 @@ public class RaceController {
     @GetMapping("/{raceId}/drivers/{driverId}/actual-strategy")
     public ActualStrategyDto getActualStrategy(@PathVariable Long raceId, @PathVariable Long driverId) {
         return raceQueryService.getActualStrategy(raceId, driverId);
+    }
+
+    /** Heuristically detected safety car / VSC windows for this race - see CautionPeriodDetectionService. */
+    @GetMapping("/{raceId}/caution-periods")
+    public List<CautionPeriodDto> getCautionPeriods(@PathVariable Long raceId) {
+        return raceQueryService.getCautionPeriods(raceId);
     }
 }

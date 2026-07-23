@@ -1,5 +1,10 @@
 import type {
   ActualStrategy,
+  CautionPeriod,
+  GridInfoResponse,
+  PredictRequest,
+  PredictionResponse,
+  QualifyingResponse,
   RaceDetail,
   RaceSummary,
   SeasonRace,
@@ -7,20 +12,27 @@ import type {
   SimulationResult,
   UndercutRequest,
   UndercutResult,
+  Weather,
 } from '../types';
 
 const BASE = '/api';
+const ML = '/ml';
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+async function requestTo<T>(root: string, path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${root}${path}`, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(body.message ?? `Request failed: ${res.status}`);
+    // FastAPI validation errors come back under `detail`, Spring under `message`.
+    throw new Error(body.message ?? body.detail ?? `Request failed: ${res.status}`);
   }
   return res.json() as Promise<T>;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  return requestTo<T>(BASE, path, init);
 }
 
 export const api = {
@@ -30,6 +42,8 @@ export const api = {
 
   getActualStrategy: (raceId: number, driverId: number) =>
     request<ActualStrategy>(`/races/${raceId}/drivers/${driverId}/actual-strategy`),
+
+  getCautionPeriods: (raceId: number) => request<CautionPeriod[]>(`/races/${raceId}/caution-periods`),
 
   simulate: (body: SimulationRequest) =>
     request<SimulationResult>('/simulate', { method: 'POST', body: JSON.stringify(body) }),
@@ -41,4 +55,17 @@ export const api = {
 
   ingestRace: (season: number, round: number) =>
     request<RaceSummary>(`/ingest/${season}/${round}`, { method: 'POST' }),
+
+  // --- 2026 race-winner ML predictor (Python FastAPI service, proxied at /ml) ---
+
+  getGridInfo: () => requestTo<GridInfoResponse>(ML, '/grid'),
+
+  generateQualifying: (weather: Weather, seed?: number) =>
+    requestTo<QualifyingResponse>(ML, '/qualifying', {
+      method: 'POST',
+      body: JSON.stringify({ weather, seed }),
+    }),
+
+  predictRaceWinner: (body: PredictRequest) =>
+    requestTo<PredictionResponse>(ML, '/predict', { method: 'POST', body: JSON.stringify(body) }),
 };

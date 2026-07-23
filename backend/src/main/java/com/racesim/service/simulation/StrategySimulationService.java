@@ -3,6 +3,7 @@ package com.racesim.service.simulation;
 import com.racesim.domain.*;
 import com.racesim.dto.*;
 import com.racesim.repository.*;
+import com.racesim.service.simulation.PitStopTimeLossModel.CautionSeverity;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -17,11 +18,13 @@ public class StrategySimulationService {
     private final LapTimeRepository lapTimeRepository;
     private final TireDegradationModel tireDegradationModel;
     private final PitStopTimeLossModel pitStopTimeLossModel;
+    private final CautionPeriodDetectionService cautionPeriodDetectionService;
 
     public StrategySimulationService(RaceRepository raceRepository, DriverRepository driverRepository,
                                       StintRepository stintRepository, PitStopRepository pitStopRepository,
                                       LapTimeRepository lapTimeRepository, TireDegradationModel tireDegradationModel,
-                                      PitStopTimeLossModel pitStopTimeLossModel) {
+                                      PitStopTimeLossModel pitStopTimeLossModel,
+                                      CautionPeriodDetectionService cautionPeriodDetectionService) {
         this.raceRepository = raceRepository;
         this.driverRepository = driverRepository;
         this.stintRepository = stintRepository;
@@ -29,6 +32,7 @@ public class StrategySimulationService {
         this.lapTimeRepository = lapTimeRepository;
         this.tireDegradationModel = tireDegradationModel;
         this.pitStopTimeLossModel = pitStopTimeLossModel;
+        this.cautionPeriodDetectionService = cautionPeriodDetectionService;
     }
 
     public SimulationResultDto simulate(SimulationRequestDto request) {
@@ -49,6 +53,11 @@ public class StrategySimulationService {
         List<PlannedStintDto> normalizedPlan = normalizeStintLengths(request.plannedStints(), totalLaps);
         Set<Integer> pitLaps = pitLapsFor(normalizedPlan);
 
+        Map<Integer, CautionPeriodDto> cautionByLap = new HashMap<>();
+        for (CautionPeriodDto period : cautionPeriodDetectionService.detect(race.getId())) {
+            for (int l = period.startLap(); l <= period.endLap(); l++) cautionByLap.put(l, period);
+        }
+
         List<LapSimDto> laps = new ArrayList<>();
         double cumulativeSim = 0.0;
         double cumulativeActual = 0.0;
@@ -58,13 +67,22 @@ public class StrategySimulationService {
 
         for (PlannedStintDto stint : normalizedPlan) {
             for (int tireAge = 0; tireAge < stint.lengthLaps() && lap <= totalLaps; tireAge++, lap++) {
-                double simLapTime = tireDegradationModel.estimateLapTimeSeconds(
-                        basePace, stint.compound(), tireAge, lap, totalLaps);
+                CautionPeriodDto caution = cautionByLap.get(lap);
+
+                // Under caution the whole field is pace-capped to roughly the same delta, which
+                // swamps any tire/fuel effect - so the historical field pace for that lap is a
+                // better estimate than the green-flag degradation model extrapolated into a
+                // regime it wasn't built for.
+                double simLapTime = caution != null
+                        ? caution.fieldPaceSecondsPerLap()
+                        : tireDegradationModel.estimateLapTimeSeconds(basePace, stint.compound(), tireAge, lap, totalLaps);
 
                 boolean isPitLap = pitLaps.contains(lap);
                 if (isPitLap) {
+                    CautionSeverity severity = caution == null ? CautionSeverity.NONE
+                            : "SC".equals(caution.type()) ? CautionSeverity.SAFETY_CAR : CautionSeverity.VSC;
                     simLapTime += pitStopTimeLossModel.totalTimeLossSeconds(
-                            race.getDefaultPitLaneLossSeconds(), request.assumedStationaryTimeSeconds());
+                            race.getDefaultPitLaneLossSeconds(), request.assumedStationaryTimeSeconds(), severity);
                 }
 
                 cumulativeSim += simLapTime;
@@ -82,7 +100,8 @@ public class StrategySimulationService {
                         round2(simLapTime),
                         actualLapTime,
                         round2(lastKnownDelta),
-                        isPitLap
+                        isPitLap,
+                        caution != null ? caution.type() : null
                 ));
             }
         }

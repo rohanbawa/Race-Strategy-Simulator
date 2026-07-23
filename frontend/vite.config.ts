@@ -9,6 +9,13 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true
+      },
+      // The Python ML service (FastAPI) serves its routes at the root; strip the
+      // /ml prefix the frontend uses to keep the two backends on separate paths.
+      '/ml': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/ml/, '')
       }
     }
   }

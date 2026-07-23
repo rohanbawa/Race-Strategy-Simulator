@@ -2,19 +2,21 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
-import type { LapSim } from '../types';
+import type { CautionPeriod, LapSim } from '../types';
 
 interface Props {
   laps: LapSim[];
+  cautionPeriods?: CautionPeriod[];
 }
 
-export default function DeltaChart({ laps }: Props) {
+export default function DeltaChart({ laps, cautionPeriods }: Props) {
   const data = laps.map((l) => ({
     lap: l.lap,
     delta: l.cumulativeDeltaSeconds,
@@ -44,6 +46,18 @@ export default function DeltaChart({ laps }: Props) {
             </linearGradient>
           </defs>
           <CartesianGrid stroke="var(--line)" strokeDasharray="2 4" vertical={false} />
+          {cautionPeriods?.map((c, i) => (
+            <ReferenceArea
+              key={i}
+              x1={c.startLap}
+              x2={c.endLap}
+              fill="var(--accent-warning)"
+              fillOpacity={0.12}
+              stroke="var(--accent-warning)"
+              strokeOpacity={0.4}
+              ifOverflow="extendDomain"
+            />
+          ))}
           <XAxis
             dataKey="lap"
             stroke="var(--text-faint)"

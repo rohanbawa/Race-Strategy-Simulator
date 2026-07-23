@@ -1,4 +1,4 @@
-import type { PitStopInfo, StintInfo } from '../types';
+import type { CautionPeriod, PitStopInfo, StintInfo } from '../types';
 import { COMPOUND_COLOR_VAR, COMPOUND_LABEL } from '../types';
 
 interface Props {
@@ -6,9 +6,10 @@ interface Props {
   pitStops: PitStopInfo[];
   totalLaps: number;
   label: string;
+  cautionPeriods?: CautionPeriod[];
 }
 
-export default function StintTimeline({ stints, pitStops, totalLaps, label }: Props) {
+export default function StintTimeline({ stints, pitStops, totalLaps, label, cautionPeriods }: Props) {
   if (totalLaps <= 0) return null;
 
   return (
@@ -60,6 +61,37 @@ export default function StintTimeline({ stints, pitStops, totalLaps, label }: Pr
           );
         })}
       </div>
+      {cautionPeriods && cautionPeriods.length > 0 && (
+        <div style={{ position: 'relative', height: 16, marginTop: 3 }}>
+          {cautionPeriods.map((c, i) => {
+            const leftPct = ((c.startLap - 1) / totalLaps) * 100;
+            const widthPct = ((c.endLap - c.startLap + 1) / totalLaps) * 100;
+            return (
+              <div
+                key={i}
+                title={`${c.type === 'SC' ? 'Safety Car' : 'Virtual Safety Car'} (detected) · laps ${c.startLap}-${c.endLap}`}
+                style={{
+                  position: 'absolute',
+                  left: `${leftPct}%`,
+                  width: `${widthPct}%`,
+                  height: '100%',
+                  background: 'rgba(255, 212, 0, 0.22)',
+                  border: '1px solid var(--accent-warning)',
+                  borderRadius: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <span style={{ fontFamily: 'var(--font-data)', fontSize: 9, fontWeight: 700, color: 'var(--accent-warning)' }}>
+                  {widthPct > 4 ? c.type : ''}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div style={{ position: 'relative', height: 14, marginTop: 2 }}>
         {pitStops.map((stop) => (
           <div

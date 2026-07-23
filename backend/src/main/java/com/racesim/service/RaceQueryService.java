@@ -3,6 +3,7 @@ package com.racesim.service;
 import com.racesim.domain.*;
 import com.racesim.dto.*;
 import com.racesim.repository.*;
+import com.racesim.service.simulation.CautionPeriodDetectionService;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -16,15 +17,22 @@ public class RaceQueryService {
     private final StintRepository stintRepository;
     private final PitStopRepository pitStopRepository;
     private final LapTimeRepository lapTimeRepository;
+    private final CautionPeriodDetectionService cautionPeriodDetectionService;
 
     public RaceQueryService(RaceRepository raceRepository, DriverRepository driverRepository,
                              StintRepository stintRepository, PitStopRepository pitStopRepository,
-                             LapTimeRepository lapTimeRepository) {
+                             LapTimeRepository lapTimeRepository,
+                             CautionPeriodDetectionService cautionPeriodDetectionService) {
         this.raceRepository = raceRepository;
         this.driverRepository = driverRepository;
         this.stintRepository = stintRepository;
         this.pitStopRepository = pitStopRepository;
         this.lapTimeRepository = lapTimeRepository;
+        this.cautionPeriodDetectionService = cautionPeriodDetectionService;
+    }
+
+    public List<CautionPeriodDto> getCautionPeriods(Long raceId) {
+        return cautionPeriodDetectionService.detect(raceId);
     }
 
     public List<RaceSummaryDto> listRaces() {
