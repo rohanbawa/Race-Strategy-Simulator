@@ -12,11 +12,12 @@ pip install -r requirements.txt
 uvicorn app.main:app --port 8000
 ```
 
-The model trains itself on first use (~a few seconds) and caches to `models/race_winner.joblib`.
+The model trains itself on first use (~a minute — it Monte-Carlos a win-probability
+target for every training scenario) and caches to `models/race_winner.joblib`.
 Force a rebuild / resize the training set with:
 
 ```bash
-python train.py --races 8000
+python train.py --scenarios 6000 --sims 400
 ```
 
 ## How it works
@@ -30,11 +31,12 @@ generator** instead of real results:
 | `app/calendar_2026.py` | The 24-round 2026 calendar with per-circuit characteristics (overtaking ease, tyre stress, safety-car rate) and played/upcoming status. |
 | `app/simulator.py` | Generative race model: car/driver pace, 2026 reg effects, per-circuit factors, and the randomness safety cars / weather / tyre strategy inject. Produces training labels and inference distributions. |
 | `app/features.py` | Feature engineering — the single feature contract shared by training and inference. |
-| `app/model.py` | Trains / persists / loads a `RandomForestClassifier` for `P(win)` and normalises across the field. |
+| `app/model.py` | Trains / persists / loads a `RandomForestRegressor` that learns each car's `P(win)` — regressed on the Monte-Carlo win frequency (a calibrated soft target, not noisy one-hot winners) — and normalises across the field. |
 | `app/main.py` | FastAPI routes (`/health`, `/grid`, `/qualifying`, `/predict`, `/model-info`). |
 
-The headline win % comes from the trained classifier; podium / points / average-finish come
-from a Monte-Carlo of the same generator under your exact scenario.
+The headline win % comes from the trained regressor (calibrated to the generator's win rate);
+podium / points / average-finish come from a Monte-Carlo of the same generator under your exact
+scenario — so the two views stay consistent (win ≤ podium ≤ points).
 
 ## Endpoints
 

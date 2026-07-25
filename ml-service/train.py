@@ -1,11 +1,13 @@
 """
 Train (or retrain) the race-winner model and print its evaluation.
 
-    python train.py                 # defaults: 4000 synthetic races
-    python train.py --races 8000    # more data, slower, slightly sharper
+    python train.py                    # defaults: 4000 scenarios x 250 sims each
+    python train.py --scenarios 6000   # more data, slower, slightly sharper
+    python train.py --sims 400         # sharper win-probability targets, slower
 
-The service also trains automatically on first request if no cached model exists,
-so running this by hand is only needed to force a rebuild or tune the data size.
+Each scenario contributes a Monte-Carlo win-probability target the regressor learns
+(see app/model.py). The service also trains automatically on first request if no
+cached model exists, so running this by hand is only needed to force a rebuild.
 """
 
 import argparse
@@ -16,13 +18,14 @@ from app import model as ml
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train the 2026 race-winner model.")
-    parser.add_argument("--races", type=int, default=4000, help="number of synthetic races to generate")
-    parser.add_argument("--trees", type=int, default=260, help="number of trees in the random forest")
+    parser.add_argument("--scenarios", type=int, default=4000, help="number of synthetic (scenario, grid) pairs")
+    parser.add_argument("--sims", type=int, default=250, help="Monte-Carlo draws per scenario for the win-prob target")
+    parser.add_argument("--trees", type=int, default=400, help="number of trees in the random forest")
     parser.add_argument("--seed", type=int, default=2026)
     args = parser.parse_args()
 
-    print(f"Generating {args.races} synthetic 2026 races and training {args.trees} trees...")
-    bundle = ml.train(n_races=args.races, n_estimators=args.trees, seed=args.seed)
+    print(f"Generating {args.scenarios} scenarios x {args.sims} Monte-Carlo draws and training {args.trees} trees...")
+    bundle = ml.train(n_scenarios=args.scenarios, n_sims=args.sims, n_estimators=args.trees, seed=args.seed)
 
     print(f"\nSaved model v{bundle['version']} -> {ml.MODEL_PATH}")
     print(f"  training rows : {bundle['n_train_rows']}")

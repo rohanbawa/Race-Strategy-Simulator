@@ -529,7 +529,7 @@ function ModelPanel({ info, sims }: { info: GridInfoResponse; sims: number }) {
   return (
     <Panel title="How this prediction is made">
       <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', marginBottom: 18 }}>
-        <Stat label="model" value={m.model_type.replace('Classifier', '')} />
+        <Stat label="model" value={m.model_type.replace(/Classifier|Regressor/, '')} />
         <Stat label="version" value={m.version} />
         <Stat label="trained on" value={`${m.n_train_races.toLocaleString()} races`} />
         <Stat label="favourite wins" value={`${(m.metrics.top1_accuracy * 100).toFixed(0)}%`} />
@@ -538,10 +538,11 @@ function ModelPanel({ info, sims }: { info: GridInfoResponse; sims: number }) {
       </div>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '0 0 16px 0', maxWidth: 760 }}>
         A <strong style={{ color: 'var(--text-primary)' }}>{m.model_type}</strong> ({m.features.length} features)
-        learns win probability from a physics-informed simulation of the 2026 grid — including each circuit's
-        overtaking difficulty and tyre stress — since no 2026 race history exists yet. Podium, points and
-        average-finish come from a Monte-Carlo of the same model under your exact conditions. The headline
-        win % below sums to 100% across the field.
+        learns each car's win probability from a physics-informed simulation of the 2026 grid — including each
+        circuit's overtaking difficulty and tyre stress — since no 2026 race history exists yet. It's trained to
+        reproduce the simulation's actual win rate, so the headline win % stays consistent with the podium, points
+        and average-finish odds, which come from a Monte-Carlo of the same model under your exact conditions. The
+        headline win % below sums to 100% across the field.
       </p>
       <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, color: 'var(--text-faint)', textTransform: 'uppercase', marginBottom: 8 }}>
         What the model weighs most

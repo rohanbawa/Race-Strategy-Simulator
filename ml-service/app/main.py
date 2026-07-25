@@ -197,12 +197,19 @@ def predict(req: ScenarioRequest) -> PredictionResponse:
 
     grid = _grid_from_request(req)
 
-    # ML classifier -> headline win probability.
+    # ML regressor -> headline win probability (calibrated to the generator's win rate).
     win_probs = ml.predict_win_probabilities(cond, grid)
-    # Monte-Carlo of the same generator -> distributional metrics the classifier
+    # Monte-Carlo of the same generator -> distributional metrics the regressor
     # doesn't produce (podium/points odds, expected finishing position).
     rng = np.random.default_rng(7)
     mc = monte_carlo(cond, grid, req.monteCarloSims, rng)
+
+    # The win% (regressor) and podium/points (Monte-Carlo) are two views of the same
+    # model, so they should be near-identical - but sampling noise can leave a driver's
+    # win% a hair above their podium%. Project onto win <= podium <= points so the
+    # displayed odds never contradict each other.
+    podium_probs = np.maximum(mc["podium"], win_probs)
+    points_probs = np.maximum(mc["points"], podium_probs)
 
     ents = entrants()
     preds = [
@@ -214,8 +221,8 @@ def predict(req: ScenarioRequest) -> PredictionResponse:
             teamColor=e.team.color,
             gridPosition=int(grid[i]),
             winProbability=round(float(win_probs[i]), 4),
-            podiumProbability=round(float(mc["podium"][i]), 4),
-            pointsProbability=round(float(mc["points"][i]), 4),
+            podiumProbability=round(float(podium_probs[i]), 4),
+            pointsProbability=round(float(points_probs[i]), 4),
             meanFinish=round(float(mc["mean_finish"][i]), 2),
             carRating=e.team.car_rating,
             driverRating=e.driver.driver_rating,
