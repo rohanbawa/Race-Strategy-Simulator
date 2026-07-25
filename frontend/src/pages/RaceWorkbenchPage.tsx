@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api/client';
-import type { ActualStrategy, CautionPeriod, PlannedStint, RaceDetail, SimulationResult } from '../types';
+import type { ActualStrategy, CautionPeriod, PlannedStint, RaceDetail, RaceSummary, SimulationResult } from '../types';
 import StintTimeline from '../components/StintTimeline';
 import EditableStintTimeline from '../components/EditableStintTimeline';
 import DeltaChart, { type DeltaSeries } from '../components/DeltaChart';
 import UndercutPanel from '../components/UndercutPanel';
+import TrackMap, { SECTOR_COLORS, DRS_COLOR } from '../components/TrackMap';
+import { circuitFor } from '../data/circuits';
+import { countryIso2 } from '../data/flags';
 
 const PLAN_COLORS = ['#3987e5', '#d95926', '#9085e9']; // blue / orange / violet — CVD-validated
 const PLAN_NAMES = ['A', 'B', 'C'];
@@ -108,15 +111,7 @@ export default function RaceWorkbenchPage() {
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 28px', width: '100%' }}>
-      <div style={{ marginBottom: 24 }}>
-        <span style={{ fontFamily: 'var(--font-data)', fontSize: 12, fontWeight: 700, color: 'var(--f1-red)' }}>
-          {detail.race.season} · ROUND {detail.race.round}
-        </span>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 32, margin: '4px 0' }}>
-          {detail.race.name}
-        </h1>
-        <p style={{ color: 'var(--text-muted)', margin: 0 }}>{detail.race.circuitName}, {detail.race.country}</p>
-      </div>
+      <RaceHero race={detail.race} />
 
       <div style={{ marginBottom: 28 }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 340 }}>
@@ -369,6 +364,191 @@ export default function RaceWorkbenchPage() {
         </Panel>
       )}
     </div>
+  );
+}
+
+function RaceHero({ race }: { race: RaceSummary }) {
+  const shape = circuitFor(race.circuitName, race.country, race.name);
+  const iso = countryIso2(race.country);
+  const location = [shape.city, race.country].filter(Boolean).join(', ');
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        overflow: 'hidden',
+        marginBottom: 24,
+        borderRadius: 'var(--radius-lg, 14px)',
+        border: '1px solid var(--line)',
+        background:
+          'radial-gradient(120% 150% at 8% 10%, rgba(225,6,0,0.14), rgba(225,6,0,0) 52%), linear-gradient(120deg, var(--bg-panel) 0%, var(--bg-void) 100%)',
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'stretch',
+      }}
+    >
+      {/* Track map, in its own inset panel. */}
+      <div
+        style={{
+          position: 'relative',
+          flex: '1 1 340px',
+          minWidth: 260,
+          margin: 16,
+          marginRight: 8,
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--line)',
+          background: 'var(--bg-panel-inset)',
+          height: 280,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px 20px',
+        }}
+      >
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 'var(--radius-md)',
+            backgroundImage:
+              'linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px)',
+            backgroundSize: '26px 26px',
+            opacity: 0.14,
+            pointerEvents: 'none',
+          }}
+        />
+        <TrackMap circuitName={race.circuitName} country={race.country} raceName={race.name} />
+      </div>
+
+      {/* Race identity + vital stats. */}
+      <div
+        style={{
+          position: 'relative',
+          flex: '1 1 300px',
+          padding: '24px 30px 24px 14px',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          gap: 16,
+          zIndex: 1,
+        }}
+      >
+        <div>
+          <span style={{ fontFamily: 'var(--font-data)', fontSize: 12, fontWeight: 700, color: 'var(--f1-red)', letterSpacing: '0.06em' }}>
+            {race.season} · ROUND {race.round}
+          </span>
+          <h1
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontWeight: 700,
+              fontSize: 32,
+              margin: '6px 0 2px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            {race.name}
+            {iso && (
+              <img
+                src={`https://flagcdn.com/${iso}.svg`}
+                alt=""
+                width={34}
+                style={{ borderRadius: 3, boxShadow: '0 0 0 1px var(--line)' }}
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            )}
+          </h1>
+          <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: 15 }}>{race.circuitName}</p>
+        </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          {location && <InfoChip icon={<PinIcon />} label="Location" value={location} />}
+          {shape.lengthKm != null && <InfoChip icon={<TrendIcon />} label="Length" value={`${shape.lengthKm.toFixed(3)} km`} />}
+          {shape.corners != null && <InfoChip icon={<LoopIcon />} label="Corners" value={String(shape.corners)} />}
+        </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 16px', fontFamily: 'var(--font-data)', fontSize: 12, color: 'var(--text-muted)' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Swatch color={SECTOR_COLORS[0]} /> S1
+            <Swatch color={SECTOR_COLORS[1]} /> S2
+            <Swatch color={SECTOR_COLORS[2]} /> S3
+            <span style={{ color: 'var(--text-faint)' }}>sectors</span>
+          </span>
+          {shape.drs.length > 0 && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Swatch color={DRS_COLOR} /> <span style={{ color: 'var(--text-faint)' }}>DRS / overtaking zone</span>
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Swatch({ color }: { color: string }) {
+  return <span style={{ width: 11, height: 4, borderRadius: 2, background: color, display: 'inline-block' }} />;
+}
+
+function InfoChip({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        background: 'var(--bg-panel-inset)',
+        border: '1px solid var(--line)',
+        borderRadius: 999,
+        padding: '8px 14px',
+      }}
+    >
+      <span style={{ color: 'var(--text-faint)', display: 'inline-flex' }}>{icon}</span>
+      <span style={{ fontFamily: 'var(--font-data)', fontSize: 13, color: 'var(--text-muted)' }}>{label}:</span>
+      <span style={{ fontFamily: 'var(--font-data)', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{value}</span>
+    </div>
+  );
+}
+
+const iconProps = {
+  width: 14,
+  height: 14,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+};
+
+function PinIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0Z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  );
+}
+
+function TrendIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M3 17l6-6 4 4 8-8" />
+      <path d="M17 7h4v4" />
+    </svg>
+  );
+}
+
+function LoopIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M21 12a9 9 0 1 1-3-6.7" />
+      <path d="M21 3v5h-5" />
+    </svg>
   );
 }
 
