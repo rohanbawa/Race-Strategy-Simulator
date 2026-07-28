@@ -1,0 +1,31 @@
+# Render Blueprint — deploys the Java backend and the Python ML service from this
+# monorepo. In the Render dashboard: New > Blueprint > pick this repo; Render reads this
+# file and creates both services. Docs: https://render.com/docs/blueprint-spec
+#
+# The Vite frontend is NOT here — it deploys to Vercel and proxies /api and /ml to the
+# two service URLs Render assigns below (see frontend/vercel.json and DEPLOY.md).
+services:
+  - type: web
+    name: racesim-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    autoDeploy: true
+    envVars:
+      # CORS is mostly moot behind Vercel's server-side proxy, but same-origin POSTs
+      # still forward an Origin header — allow any Vercel deployment plus local dev.
+      - key: RACESIM_CORS_ALLOWED_ORIGINS
+        value: "https://*.vercel.app,http://localhost:*,http://127.0.0.1:*"
+
+  - type: web
+    name: racesim-ml
+    runtime: docker
+    dockerfilePath: ./ml-service/Dockerfile
+    dockerContext: ./ml-service
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: CORS_ORIGINS
+        value: "http://localhost:5173"

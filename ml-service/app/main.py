@@ -8,6 +8,7 @@ trained lazily on the first request that needs it (see `model.load_or_train`).
 
 from __future__ import annotations
 
+import os
 from typing import Optional
 
 import numpy as np
@@ -39,10 +40,14 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# The service also answers direct browser calls in dev, not only proxied ones.
+# The service also answers direct browser calls in dev, not only proxied ones. Extra
+# origins can be supplied via CORS_ORIGINS (comma-separated); any *.vercel.app deployment
+# is allowed by pattern so the hosted frontend works without redeploying this service.
+_cors_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=_cors_origins or ["http://localhost:5173"],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_methods=["*"],
     allow_headers=["*"],
 )
